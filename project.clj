@@ -5,9 +5,9 @@
             :url  "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/core.async "0.7.559"]
+                 [org.clojure/tools.logging "0.6.0"]
                  [aero "1.1.4"]
-                 [org.clojure/tools.logging "0.5.0"]]
+                 [log4j/log4j "1.2.17"]]
   :main ^:skip-aot clojure-data-grinder.core
   :profiles {:uberjar {:aot :all}}
-  :aot [clojure-data-grinder.cdg]
   :repl-options {:init-ns clojure-data-grinder.core})

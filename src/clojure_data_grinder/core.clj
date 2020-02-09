@@ -53,7 +53,7 @@
 (defrecord SinkImpl [name conf v-fn x-fn in]
   Sink
   (sink [this v]
-    (log/debug "Sinking data on Sink " name)
+    (log/debug "Sinking value " v " to " name)
     (x-fn v))
   Step
   (validate [this conf]
@@ -64,7 +64,7 @@
     (let [v (<!! in)]
       (sink this v))))
 
-(defn- group-pipelines-by-from-name [pipelines]
+(defn- pipelines->grouped-by-name [pipelines]
   (group-by #(get-in % [:from :name]) pipelines))
 
 (defn- ->pipeline-higher-buffer-size [pipelines]
@@ -72,11 +72,10 @@
          #(get-in % [:from :buffer-size])
          (-> pipelines first second)))
 
-(defmulti bootstrap-pipeline (fn [entry]
-                               (> (-> entry val count) 1)))
+(defmulti bootstrap-pipeline (fn [entry] (> (-> entry val count) 1)))
 
 (defmethod bootstrap-pipeline false [entry]
-  (log/debug "Bootstrapping pipeline!")
+  (log/debug "Bootstrapping pipeline" (key entry))
   (let [[{{f-name :name bs-from :buffer-size} :from {t-name :name bs-to :buffer-size} :to}] (val entry)]
     (when-not (get @channels f-name)
       (log/debug "Starting from channel " f-name)
@@ -136,7 +135,7 @@
 (defn -main []
   (Signal/handle (Signal. "INT") (new KillSignalHandler))
   (let [{{sources :sources grinders :grinders sinks :sinks pipelines :pipelines} :steps} c/conf
-        grouped-pipelines (group-pipelines-by-from-name pipelines)]
+        grouped-pipelines (pipelines->grouped-by-name pipelines)]
     (doseq [p grouped-pipelines]
       (bootstrap-pipeline p))
     (doseq [s sources]
