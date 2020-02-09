@@ -1,0 +1,26 @@
+{:steps #profile {:default    {:sources   [{:name "file-reader"
+                                            :conf {}
+                                            :v-fn nil
+                                            :out  "line-grinder"
+                                            :fn   clojure-data-grinder.cdg/source-file}]
+                               :grinders  [{:name "line-grinder"
+                                            :conf {}
+                                            :v-fn nil
+                                            :in   "line-grinder"
+                                            :out  "line-sink"
+                                            :fn   clojure-data-grinder.cdg/grinder-multiplier}]
+                               :sinks     [{:name "line-sink"
+                                            :in "line-sink"
+                                            :conf {}
+                                            :v-fn nil
+                                            :fn   clojure-data-grinder.cdg/sink-value}]
+                               :pipelines [{:from {:name        "file-reader"
+                                                   :buffer-size 10}
+                                            :to   {:name        "line-grinder"
+                                                   :buffer-size 10}}
+                                           {:from {:name        "line-grinder"
+                                                   :buffer-size 10}
+                                            :to   {:name        "line-sink"
+                                                   :buffer-size 10}}]}
+                  :staging    {}
+                  :production {}}}
