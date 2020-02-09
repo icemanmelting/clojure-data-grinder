@@ -2,13 +2,12 @@
   (:require [clojure-data-grinder.config :as c]
             [clojure.tools.logging :as log]
             [clojure.core.async :as a :refer [chan go go-loop <!! <! put! pipeline mult tap close!]])
+  (:import (sun.misc SignalHandler Signal))
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
 (def ^:private channels (atom {}))
 (def ^:private main-channel (chan 1))
-
-(.addShutdownHook (Runtime/getRuntime) (Thread. ^Runnable (fn [] (put! main-channel :stop))))
 
 (defprotocol Step
   (init [this] "initialize the current step")
@@ -129,7 +128,13 @@
     (log/info "Adding source " name " to executable steps")
     (swap! executable-steps assoc name s)))
 
+(defrecord KillSignalHandler []
+  SignalHandler
+  (^void handle [this ^Signal signal]
+    (put! main-channel :stop)))
+
 (defn -main []
+  (Signal/handle (Signal. "INT") (new KillSignalHandler))
   (let [{{sources :sources grinders :grinders sinks :sinks pipelines :pipelines} :steps} c/conf
         grouped-pipelines (group-pipelines-by-from-name pipelines)]
     (doseq [p grouped-pipelines]
@@ -151,11 +156,7 @@
           (do (doseq [[name c] @channels]
                 (log/info "Stopping channel " name)
                 (close! c))
+              (log/info "Shutting down...")
               (System/exit 0)))))))
-
-
-;;use 'mult' for the one to many relations
-;;use 'chan' for one to one relations
-;;<!! - for blocking purposes
-;;<! - needs go-loop (but it is non blocking)
-;;core.async/take makes it possible to batch up results, although it needs a non blocking method
+;;todo - add atomic state of every step, and save it once the shutdown is called, so that
+;;todo - it can be loaded once it is started back up again
