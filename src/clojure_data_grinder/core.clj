@@ -5,27 +5,26 @@
     [clojure-data-grinder.config :as c]
     [clojure-data-grinder.response :refer :all]
     [clojure.tools.logging :as log]
-    [clojure.core.async :as a :refer [chan go go-loop <!! <! put! pipeline mult tap close!]]
+    [clojure.core.async :as a :refer [chan go go-loop <!! put! mult tap close!]]
     [org.httpkit.server :refer [run-server]]
     [ring.middleware.json :as json :refer [wrap-json-response]]
     [ring.middleware.cors :as cors])
-  (:import (sun.misc SignalHandler Signal))
+  (:import (sun.misc SignalHandler Signal)
+           (clojure.lang Symbol))
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
 (def ^:private channels (atom {}))
 (def ^:private main-channel (chan 1))
+(def ^:private schedule-pool (at/mk-pool))
 
 (defprotocol Step
   (init [this] "initialize the current step")
   (validate [this conf])
-  (getState [this])
-  (setState [this state-val]))
+  (getState [this]))
 
 (defprotocol Source
   (output [this value] "method to output the sourced data"))
-
-(def schedule-pool (at/mk-pool))
 
 (defrecord SourceImpl [state name conf v-fn x-fn out poll-frequency-s]
   Source
@@ -35,19 +34,17 @@
   Step
   (init [this]
     (log/debug "Initialized Source " name)
-    (at/every poll-frequency-s #(let [{sb :successful-batches ub :unsuccessful-batches pb :processed-batches :as s} @state]
+    (at/every poll-frequency-s #(let [{sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
                                   (try (output this (x-fn))
-                                       (swap! s assoc :processed-batches (inc pb) :successful-batches (inc sb))
+                                       (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
                                        (catch Exception e
                                          (log/error e)
-                                         (swap! s assoc :processed-batches (inc pb) :unsuccessful-batches (inc ub))))) schedule-pool))
+                                         (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
   (validate [this conf]
     (if-let [result (v-fn conf)]
       (throw (ex-info "Problem validating Source conf!" result))
       (log/debug "Source " name " validated")))
-  (getState [this] @state)
-  (setState [this state-val]
-    (swap! state state-val)))
+  (getState [this] @state))
 
 (defprotocol Grinder
   (grind [this v]))
@@ -60,20 +57,18 @@
   Step
   (init [this]
     (at/every poll-frequency-s #(let [v (<!! in)
-                                      {sb :successful-batches ub :unsuccessful-batches pb :processed-batches :as s} @state]
+                                      {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
                                   (try (grind this v)
-                                       (swap! s assoc :processed-batches (inc pb) :successful-batches (inc sb))
+                                       (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
                                        (catch Exception e
                                          (log/error e)
-                                         (swap! s assoc :processed-batches (inc pb) :unsuccessful-batches (inc ub))))
+                                         (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))
                                   ) schedule-pool))
   (validate [this conf]
     (if-let [result (v-fn conf)]
       (throw (ex-info "Problem validating Grinder conf!" result))
       (log/debug "Grinder " name " validated")))
-  (getState [this] @state)
-  (setState [this state-val]
-    (swap! state state-val)))
+  (getState [this] @state))
 
 (defprotocol Sink
   (sink [this v] "method to sink data"))
@@ -89,18 +84,15 @@
       (throw (ex-info "Problem validating Sink conf!" result))
       (log/debug "Sink " name " validated")))
   (init [this]
-    (prn @state)
     (at/every poll-frequency-s #(let [v (<!! in)
                                       {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
                                   (try
                                     (sink this v)
-                                    (swap! state assoc :processed-batches (inc pb) :successful-batches (inc sb))
+                                    (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
                                     (catch Exception e
                                       (log/error e)
-                                      (swap! state assoc :processed-batches (inc pb) :unsuccessful-batches (inc ub))))) schedule-pool))
-  (getState [this] @state)
-  (setState [this state-val]
-    (swap! state state-val)))
+                                      (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
+  (getState [this] @state))
 
 (defn- pipelines->grouped-by-name [pipelines]
   (group-by #(get-in % [:from :name]) pipelines))
@@ -144,7 +136,7 @@
             (log/debug "Adding to channel " t-name " to mult")
             (tap mult-c to-channel)))))))
 
-(defn- bootstrap-step [impl {name :name conf :conf v-fn :v-fn out :out in :in fn :fn pf :poll-frequency-s}]
+(defn- bootstrap-step [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn pf :poll-frequency-s}]
   (require (symbol (.getNamespace fn)))
   (let [in-ch (get @channels in)
         out-ch (get @channels out)
@@ -164,15 +156,10 @@
                  :poll-frequency-s pf})]
     (if v-fn
       (do (log/info "Validating Step " ~name)
-          (.validate s conf))
+          (validate s conf))
       (log/info "Validation Function for Source " name "not present, skipping validation."))
     (log/info "Adding source " name " to executable steps")
     (swap! executable-steps assoc name s)))
-
-(defrecord KillSignalHandler []
-  SignalHandler
-  (^void handle [this ^Signal signal]
-    (put! main-channel :stop)))
 
 (defn- wrap-json-body [h]
   (json/wrap-json-body h {:keywords?          true
@@ -186,21 +173,28 @@
 (defroutes main-routes
            (GET "/state" [] (render (fn [_]
                                       (many :ok (for [s @executable-steps]
-                                                  {(key s) (.getState (val s))})))))
+                                                  {(key s) (getState (val s))})))))
            (GET "/state/:name" [] (render (fn [{{:keys [name]} :params}]
                                             (if-let [s (get @executable-steps name)]
-                                              (one :ok (.getState s))
+                                              (one :ok (getState s))
                                               (error :not-found {:message "Please refer to an existing step"})))))
            (PUT "/execution/stop" [] (fn [_]
+                                       (log/info "Stopping channels")
                                        (put! main-channel :stop)
                                        (one :ok {}))))
 
 (defroutes app (-> main-routes wrap-json-body wrap-json-response wrap-cors))
 
+(defrecord KillSignalHandler []
+  SignalHandler
+  (^void handle [_ ^Signal _]
+    (put! main-channel :stop)))
+
 (defn -main []
-  (run-server app {:port 8080})
-  (log/info "Server started on port 8080")                  ;;customize port?
-  (Signal/handle (Signal. "INT") (new KillSignalHandler))
+  (let [port (-> c/conf :api-server :port)]
+    (run-server app {:port port})
+    (log/info "Server started on port" port)  )
+  (Signal/handle (Signal. "INT") (->KillSignalHandler))
   (let [{{sources :sources grinders :grinders sinks :sinks pipelines :pipelines} :steps} c/conf
         grouped-pipelines (pipelines->grouped-by-name pipelines)]
     (doseq [p grouped-pipelines]
@@ -214,7 +208,7 @@
 
     (doseq [s (vals @executable-steps)]
       (log/info "Initializing Step " (:name s))
-      (.init s))
+      (init s))
 
     (while true
       (let [v (<!! main-channel)]
@@ -222,7 +216,7 @@
           (do (doseq [[name c] @channels]
                 (log/info "Stopping channel " name)
                 (close! c))
+              (log/info "Stopping scheduled tasks")
+              (at/stop-and-reset-pool! schedule-pool :strategy :kill)
               (log/info "Shutting down...")
               (System/exit 0)))))))
-;;todo - add atomic state of every step, and save it once the shutdown is called, so that
-;;todo - it can be loaded once it is started back up again

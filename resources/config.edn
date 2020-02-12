@@ -1,29 +1,30 @@
-{:steps #profile {:default    {:sources   [{:name "file-reader"
-                                            :conf {}
-                                            :v-fn nil
-                                            :out  "line-grinder"
-                                            :fn   clojure-data-grinder.cdg/source-file
-                                            :poll-frequency-s 5}]
-                               :grinders  [{:name "line-grinder"
-                                            :conf {}
-                                            :v-fn nil
-                                            :in   "line-grinder"
-                                            :out  "line-sink"
-                                            :fn   clojure-data-grinder.cdg/grinder-multiplier
-                                            :poll-frequency-s 5}]
-                               :sinks     [{:name "line-sink"
-                                            :in "line-sink"
-                                            :conf {}
-                                            :v-fn nil
-                                            :fn   clojure-data-grinder.cdg/sink-value
-                                            :poll-frequency-s 5}]
-                               :pipelines [{:from {:name        "file-reader"
-                                                   :buffer-size 10}
-                                            :to   {:name        "line-grinder"
-                                                   :buffer-size 10}}
-                                           {:from {:name        "line-grinder"
-                                                   :buffer-size 10}
-                                            :to   {:name        "line-sink"
-                                                   :buffer-size 10}}]}
-                  :staging    {}
-                  :production {}}}
+{:api-server #profile {:default {:port 8080}}
+ :steps      #profile {:default    {:sources   [{:name             "file-reader"
+                                                 :conf             {}
+                                                 :v-fn             nil
+                                                 :out              "line-grinder"
+                                                 :fn              cdg-test.core/source-file
+                                                 :poll-frequency-s 5}]
+                                    :grinders  [{:name             "line-grinder"
+                                                 :conf             {}
+                                                 :v-fn             nil
+                                                 :in               "line-grinder"
+                                                 :out              "line-sink"
+                                                 :fn               cdg-test.core/grinder-multiplier
+                                                 :poll-frequency-s 5}]
+                                    :sinks     [{:name             "line-sink"
+                                                 :in               "line-sink"
+                                                 :conf             {}
+                                                 :v-fn             nil
+                                                 :fn               cdg-test.core/sink-value
+                                                 :poll-frequency-s 5}]
+                                    :pipelines [{:from {:name        "file-reader"
+                                                        :buffer-size 10}
+                                                 :to   {:name        "line-grinder"
+                                                        :buffer-size 10}}
+                                                {:from {:name        "line-grinder"
+                                                        :buffer-size 10}
+                                                 :to   {:name        "line-sink"
+                                                        :buffer-size 10}}]}
+                       :staging    {}
+                       :production {}}}
