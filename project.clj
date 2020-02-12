@@ -5,9 +5,16 @@
             :url  "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/core.async "0.7.559"]
+                 [org.clojure/data.json "0.2.7"]
                  [org.clojure/tools.logging "0.6.0"]
                  [aero "1.1.4"]
-                 [log4j/log4j "1.2.17"]]
+                 [overtone/at-at "1.2.0"]
+                 [log4j/log4j "1.2.17"]
+                 [http-kit "2.3.0"]
+                 [compojure "1.6.1" :exclusions [clj-time]]
+                 [prismatic/schema "1.1.3"]
+                 [ring/ring-json "0.4.0" :exclusions [clj-time]]
+                 [ring-cors "0.1.9"]]
   :main ^:skip-aot clojure-data-grinder.core
   :profiles {:uberjar {:aot :all}}
   :repl-options {:init-ns clojure-data-grinder.core})
