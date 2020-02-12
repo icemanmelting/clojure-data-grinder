@@ -12,9 +12,9 @@
                  [log4j/log4j "1.2.17"]
                  [http-kit "2.3.0"]
                  [compojure "1.6.1" :exclusions [clj-time]]
-                 [prismatic/schema "1.1.3"]
-                 [ring/ring-json "0.4.0" :exclusions [clj-time]]
-                 [ring-cors "0.1.9"]]
+                 [prismatic/schema "1.1.12"]
+                 [ring/ring-json "0.5.0" :exclusions [clj-time]]
+                 [ring-cors "0.1.13"]]
   :main ^:skip-aot clojure-data-grinder.core
   :profiles {:uberjar {:aot :all}}
   :repl-options {:init-ns clojure-data-grinder.core})

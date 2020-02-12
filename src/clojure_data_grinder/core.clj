@@ -1,14 +1,13 @@
 (ns clojure-data-grinder.core
-  (:require
-    [overtone.at-at :as at]
-    [compojure.core :refer :all]
-    [clojure-data-grinder.config :as c]
-    [clojure-data-grinder.response :refer :all]
-    [clojure.tools.logging :as log]
-    [clojure.core.async :as a :refer [chan go go-loop <!! put! mult tap close!]]
-    [org.httpkit.server :refer [run-server]]
-    [ring.middleware.json :as json :refer [wrap-json-response]]
-    [ring.middleware.cors :as cors])
+  (:require [overtone.at-at :as at]
+            [compojure.core :refer :all]
+            [clojure-data-grinder.config :as c]
+            [clojure-data-grinder.response :refer :all]
+            [clojure.tools.logging :as log]
+            [clojure.core.async :as a :refer [chan go go-loop <!! put! mult tap close!]]
+            [org.httpkit.server :refer [run-server]]
+            [ring.middleware.json :as json :refer [wrap-json-response]]
+            [ring.middleware.cors :as cors])
   (:import (sun.misc SignalHandler Signal)
            (clojure.lang Symbol))
   (:gen-class))
@@ -177,7 +176,7 @@
            (GET "/state/:name" [] (render (fn [{{:keys [name]} :params}]
                                             (if-let [s (get @executable-steps name)]
                                               (one :ok (getState s))
-                                              (error :not-found {:message "Please refer to an existing step"})))))
+                                              (error :not-found "Please refer to an existing step")))))
            (PUT "/execution/stop" [] (fn [_]
                                        (log/info "Stopping channels")
                                        (put! main-channel :stop)
@@ -193,7 +192,7 @@
 (defn -main []
   (let [port (-> c/conf :api-server :port)]
     (run-server app {:port port})
-    (log/info "Server started on port" port)  )
+    (log/info "Server started on port" port))
   (Signal/handle (Signal. "INT") (->KillSignalHandler))
   (let [{{sources :sources grinders :grinders sinks :sinks pipelines :pipelines} :steps} c/conf
         grouped-pipelines (pipelines->grouped-by-name pipelines)]
@@ -205,11 +204,9 @@
       (bootstrap-step map->GrinderImpl g))
     (doseq [s sinks]
       (bootstrap-step map->SinkImpl s))
-
     (doseq [s (vals @executable-steps)]
       (log/info "Initializing Step " (:name s))
       (init s))
-
     (while true
       (let [v (<!! main-channel)]
         (if (= :stop v)
