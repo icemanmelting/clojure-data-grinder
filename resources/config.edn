@@ -1,11 +1,18 @@
 {:api-server #profile {:default {:port 8080}}
  :steps      #profile {:default    {:sources   [{:name             "file-reader"
+                                                 :conf             {:watch-dir "/mnt/c/Users/iCeMan/Desktop/"}
+                                                 :v-fn             nil
+                                                 :out              "line-interpreter"
+                                                 :type             clojure-data-grinder.core/map->FileWatcherSource
+                                                 :poll-frequency-s 5}]
+                                    :grinders  [{:name             "line-interpreter"
                                                  :conf             {}
                                                  :v-fn             nil
+                                                 :in               "line-interpreter"
                                                  :out              "line-grinder"
-                                                 :fn              cdg-test.core/source-file
-                                                 :poll-frequency-s 5}]
-                                    :grinders  [{:name             "line-grinder"
+                                                 :fn               cdg-test.core/process-file
+                                                 :poll-frequency-s 5}
+                                                {:name             "line-grinder"
                                                  :conf             {}
                                                  :v-fn             nil
                                                  :in               "line-grinder"
@@ -16,9 +23,13 @@
                                                  :in               "line-sink"
                                                  :conf             {}
                                                  :v-fn             nil
-                                                 :fn               cdg-test.core/sink-value
+                                                 :fn              cdg-test.core/sink-value
                                                  :poll-frequency-s 5}]
                                     :pipelines [{:from {:name        "file-reader"
+                                                        :buffer-size 10}
+                                                 :to   {:name        "line-interpreter"
+                                                        :buffer-size 10}}
+                                                {:from {:name        "line-interpreter"
                                                         :buffer-size 10}
                                                  :to   {:name        "line-grinder"
                                                         :buffer-size 10}}

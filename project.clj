@@ -9,6 +9,7 @@
                  [org.clojure/tools.logging "0.6.0"]
                  [aero "1.1.4"]
                  [overtone/at-at "1.2.0"]
+                 [juxt/dirwatch "0.2.5"]
                  [log4j/log4j "1.2.17"]
                  [http-kit "2.3.0"]
                  [compojure "1.6.1" :exclusions [clj-time]]

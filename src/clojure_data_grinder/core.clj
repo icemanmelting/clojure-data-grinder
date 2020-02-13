@@ -5,6 +5,7 @@
             [clojure-data-grinder.response :refer :all]
             [clojure.tools.logging :as log]
             [clojure.core.async :as a :refer [chan go go-loop <!! put! mult tap close!]]
+            [juxt.dirwatch :refer [watch-dir]]
             [org.httpkit.server :refer [run-server]]
             [ring.middleware.json :as json :refer [wrap-json-response]]
             [ring.middleware.cors :as cors])
@@ -18,11 +19,13 @@
 (def ^:private schedule-pool (at/mk-pool))
 
 (defprotocol Step
+  "Base step that contains the methods common to all Steps in the processing pipeline"
   (init [this] "initialize the current step")
   (validate [this conf])
   (getState [this]))
 
 (defprotocol Source
+  "Source Step -> reads raw data ready to be processed"
   (output [this value] "method to output the sourced data"))
 
 (defrecord SourceImpl [state name conf v-fn x-fn out poll-frequency-s]
@@ -45,14 +48,33 @@
       (log/debug "Source " name " validated")))
   (getState [this] @state))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Pre-implemented sources;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defrecord FileWatcherSource [state name conf v-fn x-fn out poll-frequency-s]
+  Source
+  (output [this value]
+    (log/debug "Adding value " value " to source channel " name)
+    (put! out value))
+  Step
+  (init [this]
+    (log/debug "Initialized Source " name)
+    (watch-dir #(put! out %) (clojure.java.io/file (:watch-dir conf))))
+  (validate [this conf]
+    (if-let [result (v-fn conf)]
+      (throw (ex-info "Problem validating Source conf!" result))
+      (log/debug "Source " name " validated")))
+  (getState [this] @state))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defprotocol Grinder
+  "Data Grinder -> processes the raw data"
   (grind [this v]))
 
 (defrecord GrinderImpl [state name conf v-fn in x-fn out poll-frequency-s]
   Grinder
   (grind [this v]
     (log/debug "Grinding value " v " on Grinder " name)
-    (put! out (x-fn v)))
+    (when-let [res (x-fn v)]
+      (put! out res)))
   Step
   (init [this]
     (at/every poll-frequency-s #(let [v (<!! in)
@@ -70,6 +92,7 @@
   (getState [this] @state))
 
 (defprotocol Sink
+  "Data Sink -> sinks the data into whatever form needed, DB, File, Cloud, etc"
   (sink [this v] "method to sink data"))
 
 (defrecord SinkImpl [state name conf v-fn x-fn in poll-frequency-s]
@@ -93,15 +116,23 @@
                                       (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
   (getState [this] @state))
 
-(defn- pipelines->grouped-by-name [pipelines]
+(defn- pipelines->grouped-by-name
+  "Groups pipelines by name"
+  [pipelines]
   (group-by #(get-in % [:from :name]) pipelines))
 
-(defn- ->pipeline-higher-buffer-size [pipelines]
+(defn- ->pipeline-higher-buffer-size
+  "Returns the pipelines with the higher buffer size. Used when there's a branching in the data pipeline, and a decision
+  needs to be made to which one should be selected."
+  [pipelines]
   (apply max-key
          #(get-in % [:from :buffer-size])
          (-> pipelines first second)))
 
-(defmulti bootstrap-pipeline (fn [entry] (> (-> entry val count) 1)))
+(defmulti bootstrap-pipeline
+          "Multi method used to bootstrap a pipeline. The version of the method will depend on the amount of pipelines
+          with the same name when grouped."
+          (fn [entry] (> (-> entry val count) 1)))
 
 (defmethod bootstrap-pipeline false [entry]
   (log/debug "Bootstrapping pipeline" (key entry))
@@ -135,14 +166,17 @@
             (log/debug "Adding to channel " t-name " to mult")
             (tap mult-c to-channel)))))))
 
-(defn- bootstrap-step [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn pf :poll-frequency-s}]
-  (require (symbol (.getNamespace fn)))
+(defn- bootstrap-step
+  "Bootstraps a step. Validates and initializes it by resolving all functions or predefined types."
+  [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn type :type pf :poll-frequency-s}]
+  (when (not type)
+    (require (symbol (.getNamespace fn))))
   (let [in-ch (get @channels in)
         out-ch (get @channels out)
         v-fn (when v-fn
                (require (symbol (.getNamespace v-fn)))
                (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {}))))
-        fn (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {})))
+        fn (when (not type) (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {}))))
         s (impl {:state            (atom {:processed-batches    0
                                           :successful-batches   0
                                           :unsuccessful-batches 0})
@@ -198,12 +232,18 @@
         grouped-pipelines (pipelines->grouped-by-name pipelines)]
     (doseq [p grouped-pipelines]
       (bootstrap-pipeline p))
-    (doseq [s sources]
-      (bootstrap-step map->SourceImpl s))
-    (doseq [g grinders]
-      (bootstrap-step map->GrinderImpl g))
-    (doseq [s sinks]
-      (bootstrap-step map->SinkImpl s))
+    (doseq [{type :type :as s} sources]
+      (if type
+        (bootstrap-step (resolve type) s)
+        (bootstrap-step map->SourceImpl s)))
+    (doseq [{type :type :as g} grinders]
+      (if type
+        (bootstrap-step (resolve type) g)
+        (bootstrap-step map->GrinderImpl g)))
+    (doseq [{type :type :as s} sinks]
+      (if type
+        (bootstrap-step (resolve type) s)
+        (bootstrap-step map->SinkImpl s)))
     (doseq [s (vals @executable-steps)]
       (log/info "Initializing Step " (:name s))
       (init s))
