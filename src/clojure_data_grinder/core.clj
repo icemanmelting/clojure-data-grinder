@@ -21,7 +21,7 @@
 (defprotocol Step
   "Base step that contains the methods common to all Steps in the processing pipeline"
   (init [this] "initialize the current step")
-  (validate [this conf])
+  (validate [this])
   (getState [this]))
 
 (defprotocol Source
@@ -42,7 +42,7 @@
                                        (catch Exception e
                                          (log/error e)
                                          (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
-  (validate [this conf]
+  (validate [this]
     (if-let [result (v-fn conf)]
       (throw (ex-info "Problem validating Source conf!" result))
       (log/debug "Source " name " validated")))
@@ -58,7 +58,7 @@
   (init [this]
     (log/debug "Initialized Source " name)
     (watch-dir #(put! out %) (clojure.java.io/file (:watch-dir conf))))
-  (validate [this conf]
+  (validate [this]
     (if-let [result (v-fn conf)]
       (throw (ex-info "Problem validating Source conf!" result))
       (log/debug "Source " name " validated")))
@@ -85,7 +85,7 @@
                                          (log/error e)
                                          (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))
                                   ) schedule-pool))
-  (validate [this conf]
+  (validate [this]
     (if-let [result (v-fn conf)]
       (throw (ex-info "Problem validating Grinder conf!" result))
       (log/debug "Grinder " name " validated")))
@@ -101,7 +101,7 @@
     (log/debug "Sinking value " v " to " name)
     (x-fn v))
   Step
-  (validate [this conf]
+  (validate [this]
     (if-let [result (v-fn conf)]
       (throw (ex-info "Problem validating Sink conf!" result))
       (log/debug "Sink " name " validated")))
@@ -189,7 +189,7 @@
                  :poll-frequency-s pf})]
     (if v-fn
       (do (log/info "Validating Step " ~name)
-          (validate s conf))
+          (validate s))
       (log/info "Validation Function for Source " name "not present, skipping validation."))
     (log/info "Adding source " name " to executable steps")
     (swap! executable-steps assoc name s)))
@@ -223,6 +223,11 @@
   (^void handle [_ ^Signal _]
     (put! main-channel :stop)))
 
+(defn- resolve-and-bootstrap-step [col base-type]
+  (doseq [{type :type :as s} col]
+    (let [type (or type (symbol base-type))]
+      (bootstrap-step (resolve type) s))))
+
 (defn -main []
   (let [port (-> c/conf :api-server :port)]
     (run-server app {:port port})
@@ -232,18 +237,9 @@
         grouped-pipelines (pipelines->grouped-by-name pipelines)]
     (doseq [p grouped-pipelines]
       (bootstrap-pipeline p))
-    (doseq [{type :type :as s} sources]
-      (if type
-        (bootstrap-step (resolve type) s)
-        (bootstrap-step map->SourceImpl s)))
-    (doseq [{type :type :as g} grinders]
-      (if type
-        (bootstrap-step (resolve type) g)
-        (bootstrap-step map->GrinderImpl g)))
-    (doseq [{type :type :as s} sinks]
-      (if type
-        (bootstrap-step (resolve type) s)
-        (bootstrap-step map->SinkImpl s)))
+    (resolve-and-bootstrap-step sources "clojure-data-grinder.core/map->SourceImpl")
+    (resolve-and-bootstrap-step grinders "clojure-data-grinder.core/map->GrinderImpl")
+    (resolve-and-bootstrap-step sinks "clojure-data-grinder.core/map->SinkImpl")
     (doseq [s (vals @executable-steps)]
       (log/info "Initializing Step " (:name s))
       (init s))
