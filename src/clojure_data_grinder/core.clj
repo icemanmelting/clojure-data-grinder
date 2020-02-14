@@ -109,14 +109,16 @@
 			(throw (ex-info "Problem validating Sink conf!" result))
 			(log/debug "Sink " name " validated")))
 	(init [this]
-		(at/every poll-frequency-s #(let [v (<!! in)
-																			{sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-																	(try
-																		(sink this v)
-																		(swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-																		(catch Exception e
-																			(log/error e)
-																			(swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
+		(at/every poll-frequency-s
+							#(let [v (<!! in)
+										 {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
+								 (try
+									 (sink this v)
+									 (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
+									 (catch Exception e
+										 (log/error e)
+										 (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)}))))
+							schedule-pool))
 	(getState [this] @state))
 
 (defn- pipelines->grouped-by-name
