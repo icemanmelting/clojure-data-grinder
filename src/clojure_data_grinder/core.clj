@@ -1,6 +1,7 @@
 (ns clojure-data-grinder.core
   (:require [overtone.at-at :as at]
             [compojure.core :refer :all]
+            [clojure-data-grinder-core.core :as core]
             [clojure-data-grinder.config :as c]
             [clojure-data-grinder.response :refer :all]
             [clojure.tools.logging :as log]
@@ -10,116 +11,15 @@
             [ring.middleware.json :as json :refer [wrap-json-response]]
             [ring.middleware.cors :as cors])
   (:import (sun.misc SignalHandler Signal)
-           (clojure.lang Symbol))
+           (clojure.lang Symbol)
+           (clojure_data_grinder_core.core Step))
   (:gen-class))
+
+
 
 (def ^:private executable-steps (atom {}))
 (def ^:private channels (atom {}))
 (def ^:private main-channel (chan 1))
-(def ^:private schedule-pool (at/mk-pool))
-
-(defprotocol Step
-  "Base step that contains the methods common to all Steps in the processing pipeline"
-  (init [this] "initialize the current step")
-  (validate [this])
-  (getState [this]))
-
-(defprotocol Source
-  "Source Step -> reads raw data ready to be processed"
-  (output [this value] "method to output the sourced data"))
-
-(defrecord SourceImpl [state name conf v-fn x-fn out poll-frequency-s]
-  Source
-  (output [this value]
-    (log/debug "Adding value " value " to source channel " name)
-    (put! out value))                                       ;;todo - need to create logic for batch output, maybe method next batch???
-  Step
-  (init [this]
-    (log/debug "Initialized Source " name)
-    (at/every poll-frequency-s
-              #(let [{sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-                 (try (output this (x-fn))
-                      (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-                      (catch Exception e
-                        (log/error e)
-                        (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)}))))
-              schedule-pool))
-  (validate [this]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Source conf!" result))
-      (log/debug "Source " name " validated")))
-  (getState [this] @state))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Pre-implemented sources;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defrecord FileWatcherSource [state name conf v-fn x-fn out poll-frequency-s]
-  Source
-  (output [this value]
-    (log/debug "Adding value " value " to source channel " name)
-    (put! out value))
-  Step
-  (init [this]
-    (log/debug "Initialized Source " name)
-    (watch-dir #(put! out %) (clojure.java.io/file (:watch-dir conf))))
-  (validate [this]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Source conf!" result))
-      (log/debug "Source " name " validated")))
-  (getState [this] @state))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol Grinder
-  "Data Grinder -> processes the raw data"
-  (grind [this v]))
-
-(defrecord GrinderImpl [state name conf v-fn in x-fn out poll-frequency-s]
-  Grinder
-  (grind [this v]
-    (log/debug "Grinding value " v " on Grinder " name)
-    (when-let [res (x-fn v)]
-      (put! out res)))
-  Step
-  (init [this]
-    (at/every poll-frequency-s
-              #(let [v (<!! in)
-                     {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-                 (try (grind this v)
-                      (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-                      (catch Exception e
-                        (log/error e)
-                        (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)}))))
-              schedule-pool))
-  (validate [this]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Grinder conf!" result))
-      (log/debug "Grinder " name " validated")))
-  (getState [this] @state))
-
-(defprotocol Sink
-  "Data Sink -> sinks the data into whatever form needed, DB, File, Cloud, etc"
-  (sink [this v] "method to sink data"))
-
-(defrecord SinkImpl [state name conf v-fn x-fn in poll-frequency-s]
-  Sink
-  (sink [this v]
-    (log/debug "Sinking value " v " to " name)
-    (x-fn v))
-  Step
-  (validate [this]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Sink conf!" result))
-      (log/debug "Sink " name " validated")))
-  (init [this]
-    (at/every poll-frequency-s
-              #(let [v (<!! in)
-                     {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-                 (try
-                   (sink this v)
-                   (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-                   (catch Exception e
-                     (log/error e)
-                     (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)}))))
-              schedule-pool))
-  (getState [this] @state))
 
 (defn- pipelines->grouped-by-name
   "Groups pipelines by name"
@@ -165,30 +65,32 @@
         (log/debug "Adding channel " t-name " to mult")
         (tap mult-c to-channel)))))
 
+(defn- resolve-validation-function [v-fn]
+  (when v-fn
+    (require (symbol (.getNamespace v-fn)))
+    (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {})))))
+
 (defn- bootstrap-step
   "Bootstraps a step. Validates and initializes it by resolving all functions or predefined types."
   [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn type :type pf :poll-frequency-s}]
-  (when (not type)
-    (require (symbol (.getNamespace fn))))
+  (require (symbol (.getNamespace (or fn type))))
   (let [in-ch (get @channels in)
         out-ch (get @channels out)
-        v-fn (when v-fn
-               (require (symbol (.getNamespace v-fn)))
-               (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {}))))
+        v-fn (resolve-validation-function v-fn)
         fn (when (not type) (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {}))))
-        s (impl {:state (atom {:processed-batches 0
-                               :successful-batches 0
-                               :unsuccessful-batches 0})
-                 :name name
-                 :conf conf
-                 :v-fn v-fn
-                 :in in-ch
-                 :x-fn fn
-                 :out out-ch
-                 :poll-frequency-s pf})]
+        ^Step s (impl {:state (atom {:processed-batches 0
+                                     :successful-batches 0
+                                     :unsuccessful-batches 0})
+                       :name name
+                       :conf conf
+                       :v-fn v-fn
+                       :in in-ch
+                       :x-fn fn
+                       :out out-ch
+                       :poll-frequency-s pf})]
     (if v-fn
-      (do (log/info "Validating Step " ~name)
-          (validate s))
+      (do (log/info "Validating Step " name)
+          (.validate s))
       (log/info "Validation Function for Source " name "not present, skipping validation."))
     (log/info "Adding source " name " to executable steps")
     (swap! executable-steps assoc name s)))
@@ -213,10 +115,10 @@
 (defroutes main-routes
            (GET "/state" [] (render (fn [_]
                                       (many :ok (for [s @executable-steps]
-                                                  {(key s) (getState (val s))})))))
+                                                  {(key s) (.getState ^Step (val s))})))))
            (GET "/state/:name" [] (render (fn [{{:keys [name]} :params}]
-                                            (if-let [s (get @executable-steps name)]
-                                              (one :ok (getState s))
+                                            (if-let [^Step s (get @executable-steps name)]
+                                              (one :ok (.getState s))
                                               (error :not-found "Please refer to an existing step")))))
            (PUT "/execution/stop" [] (fn [_]
                                        (log/info "Stopping channels")
@@ -231,21 +133,24 @@
   (^void handle [_ ^Signal _]
     (put! main-channel :stop)))
 
+(defn- handle-int-signal []
+  (Signal/handle (Signal. "INT") (->KillSignalHandler)))
+
 (defn -main []
   (let [port (-> c/conf :api-server :port)]
     (run-server app {:port port})
     (log/info "Server started on port" port))
-  (Signal/handle (Signal. "INT") (->KillSignalHandler))
+  (handle-int-signal)
   (let [{{sources :sources grinders :grinders sinks :sinks pipelines :pipelines} :steps} c/conf
         grouped-pipelines (pipelines->grouped-by-name pipelines)]
     (doseq [p grouped-pipelines]
       (bootstrap-pipeline p))
-    (resolve-type->bootstrap-step sources "clojure-data-grinder.core/map->SourceImpl")
-    (resolve-type->bootstrap-step grinders "clojure-data-grinder.core/map->GrinderImpl")
-    (resolve-type->bootstrap-step sinks "clojure-data-grinder.core/map->SinkImpl")
+    (resolve-type->bootstrap-step sources "clojure-data-grinder-core.core/map->SourceImpl")
+    (resolve-type->bootstrap-step grinders "clojure-data-grinder-core.core/map->GrinderImpl")
+    (resolve-type->bootstrap-step sinks "clojure-data-grinder-core.core/map->SinkImpl")
     (doseq [s (vals @executable-steps)]
       (log/info "Initializing Step " (:name s))
-      (init s))
+      (.init ^Step s))
     (while true
       (let [v (<!! main-channel)]
         (if (= :stop v)
@@ -253,6 +158,6 @@
                 (log/info "Stopping channel " name)
                 (close! c))
               (log/info "Stopping scheduled tasks")
-              (at/stop-and-reset-pool! schedule-pool :strategy :kill)
+              (at/stop-and-reset-pool! core/schedule-pool :strategy :kill)
               (log/info "Shutting down...")
               (System/exit 0)))))))

@@ -5,7 +5,7 @@
                                                  :conf             {:watch-dir "/mnt/c/Users/iCeMan/Desktop/"}
                                                  :v-fn             nil
                                                  :out              "line-interpreter"
-                                                 :type             clojure-data-grinder.core/map->FileWatcherSource
+                                                 :type             clojure-data-grinder-core.core/map->FileWatcherSource
                                                  :poll-frequency-s 5}]
                                     :grinders  [{:name             "line-interpreter"
                                                  :conf             {}
