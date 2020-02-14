@@ -136,9 +136,9 @@
          (-> pipelines first second)))
 
 (defmulti bootstrap-pipeline
-          "Multi method used to bootstrap a pipeline.
-          The version of the method will depend on the amount of pipelines with the same name when grouped."
-          (fn [entry] (> (-> entry val count) 1)))
+  "Multi method used to bootstrap a pipeline.
+  The version of the method will depend on the amount of pipelines with the same name when grouped."
+  (fn [entry] (> (-> entry val count) 1)))
 
 (defn- create-channel
   "Creates a channel with ch-name as name of the channel, if it wasn't found in the channels atomic reference"

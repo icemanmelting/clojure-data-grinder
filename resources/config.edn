@@ -1,4 +1,6 @@
-{:api-server #profile {:default {:port 8080}}
+{:api-server #profile {:default {:port 8080}
+                       :staging    {}
+                       :production {}}
  :steps      #profile {:default    {:sources   [{:name             "file-reader"
                                                  :conf             {:watch-dir "/mnt/c/Users/iCeMan/Desktop/"}
                                                  :v-fn             nil
