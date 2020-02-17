@@ -11,7 +11,7 @@
                                                  :conf             {}
                                                  :v-fn             nil
                                                  :in               "line-interpreter"
-                                                 :out              "line-grinder"
+                                                 :out              "line-mult"
                                                  :fn               cdg-test.core/process-file
                                                  :poll-frequency-s 5}
                                                 {:name             "line-grinder"
@@ -19,13 +19,20 @@
                                                  :v-fn             nil
                                                  :in               "line-grinder"
                                                  :out              "line-sink"
-                                                 :fn               cdg-test.core/grinder-multiplier
+                                                 :fn                cdg-test.core/grinder-multiplier
+                                                 :poll-frequency-s 5}
+                                                {:name             "line-grinder-2"
+                                                 :conf             {}
+                                                 :v-fn             nil
+                                                 :in               "line-grinder-2"
+                                                 :out              "line-sink"
+                                                 :fn                cdg-test.core/grinder-multiplier-2
                                                  :poll-frequency-s 5}]
                                     :sinks     [{:name             "line-sink"
                                                  :in               "line-sink"
                                                  :conf             {}
                                                  :v-fn             nil
-                                                 :fn              cdg-test.core/sink-value
+                                                 :fn               cdg-test.core/sink-value
                                                  :poll-frequency-s 5}]
                                     :pipelines [{:from {:name        "file-reader"
                                                         :buffer-size 10}
@@ -33,9 +40,21 @@
                                                         :buffer-size 10}}
                                                 {:from {:name        "line-interpreter"
                                                         :buffer-size 10}
+                                                 :to   {:name        "line-mult"
+                                                        :buffer-size 10}}
+                                                {:from {:name        "line-mult"
+                                                        :buffer-size 10}
                                                  :to   {:name        "line-grinder"
                                                         :buffer-size 10}}
+                                                {:from {:name        "line-mult"
+                                                        :buffer-size 10}
+                                                 :to   {:name        "line-grinder-2"
+                                                        :buffer-size 10}}
                                                 {:from {:name        "line-grinder"
+                                                        :buffer-size 10}
+                                                 :to   {:name        "line-sink"
+                                                        :buffer-size 10}}
+                                                {:from {:name        "line-grinder-2"
                                                         :buffer-size 10}
                                                  :to   {:name        "line-sink"
                                                         :buffer-size 10}}]}
