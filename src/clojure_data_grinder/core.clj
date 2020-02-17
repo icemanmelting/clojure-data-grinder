@@ -5,8 +5,7 @@
             [clojure-data-grinder.config :as c]
             [clojure-data-grinder.response :refer :all]
             [clojure.tools.logging :as log]
-            [clojure.core.async :as a :refer [chan go go-loop <!! put! mult tap close!]]
-            [juxt.dirwatch :refer [watch-dir]]
+            [clojure.core.async :as a :refer [chan <!! put! mult tap close!]]
             [org.httpkit.server :refer [run-server]]
             [ring.middleware.json :as json :refer [wrap-json-response]]
             [ring.middleware.cors :as cors])
@@ -14,8 +13,6 @@
            (clojure.lang Symbol)
            (clojure_data_grinder_core.core Step))
   (:gen-class))
-
-
 
 (def ^:private executable-steps (atom {}))
 (def ^:private channels (atom {}))
