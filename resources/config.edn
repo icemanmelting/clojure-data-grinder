@@ -6,34 +6,39 @@
                                                  :v-fn             nil
                                                  :out              "line-interpreter"
                                                  :type             clojure-data-grinder-core.core/map->FileWatcherSource
-                                                 :poll-frequency-s 5}]
+                                                 :poll-frequency-s 5
+                                                 :threads 1}]
                                     :grinders  [{:name             "line-interpreter"
                                                  :conf             {}
                                                  :v-fn             nil
                                                  :in               "line-interpreter"
                                                  :out              "line-mult"
                                                  :fn               cdg-test.core/process-file
-                                                 :poll-frequency-s 5}
+                                                 :poll-frequency-s 5
+                                                 :threads 2}
                                                 {:name             "line-grinder"
                                                  :conf             {}
                                                  :v-fn             nil
                                                  :in               "line-grinder"
                                                  :out              "line-sink"
                                                  :fn                cdg-test.core/grinder-multiplier
-                                                 :poll-frequency-s 5}
+                                                 :poll-frequency-s 5
+                                                 :threads 2}
                                                 {:name             "line-grinder-2"
                                                  :conf             {}
                                                  :v-fn             nil
                                                  :in               "line-grinder-2"
                                                  :out              "line-sink"
                                                  :fn                cdg-test.core/grinder-multiplier-2
-                                                 :poll-frequency-s 5}]
+                                                 :poll-frequency-s 5
+                                                 :threads 2}]
                                     :sinks     [{:name             "line-sink"
                                                  :in               "line-sink"
                                                  :conf             {}
                                                  :v-fn             nil
                                                  :fn               cdg-test.core/sink-value
-                                                 :poll-frequency-s 5}]
+                                                 :poll-frequency-s 5
+                                                 :threads 2}]
                                     :pipelines [{:from {:name        "file-reader"
                                                         :buffer-size 10}
                                                  :to   {:name        "line-interpreter"

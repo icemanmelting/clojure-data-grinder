@@ -70,15 +70,8 @@
     (require (symbol (.getNamespace v-fn)))
     (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {})))))
 
-(defn- bootstrap-step
-  "Bootstraps a step. Validates and initializes it by resolving all functions or predefined types."
-  [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn type :type pf :poll-frequency-s}]
-  (require (symbol (.getNamespace (or fn type))))
-  (let [in-ch (get @channels in)
-        out-ch (get @channels out)
-        v-fn (resolve-validation-function v-fn)
-        fn (when (not type) (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {}))))
-        ^Step s (impl {:state (atom {:processed-batches 0
+(defn- instantiate-new-step-thread [n impl name conf v-fn in-ch fn out-ch pf]
+  (let [^Step s (impl {:state (atom {:processed-batches 0
                                      :successful-batches 0
                                      :unsuccessful-batches 0})
                        :name name
@@ -93,7 +86,18 @@
           (.validate s))
       (log/info "Validation Function for Source " name "not present, skipping validation."))
     (log/info "Adding source " name " to executable steps")
-    (swap! executable-steps assoc name s)))
+    (swap! executable-steps assoc (str name "-" n) s)))
+
+(defn- bootstrap-step
+  "Bootstraps a step. Validates and initializes it by resolving all functions or predefined types."
+  [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn type :type pf :poll-frequency-s threads :threads}]
+  (require (symbol (.getNamespace (or fn type))))
+  (let [in-ch (get @channels in)
+        out-ch (get @channels out)
+        v-fn (resolve-validation-function v-fn)
+        fn (when (not type) (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {}))))]
+    (doseq [a (range threads)]
+      (instantiate-new-step-thread a impl name conf v-fn in-ch fn out-ch pf))))
 
 (defn- resolve-type->bootstrap-step
   "Resolves the type to instantiate and bootstraps the step."
@@ -148,9 +152,9 @@
     (resolve-type->bootstrap-step sources "clojure-data-grinder-core.core/map->SourceImpl")
     (resolve-type->bootstrap-step grinders "clojure-data-grinder-core.core/map->GrinderImpl")
     (resolve-type->bootstrap-step sinks "clojure-data-grinder-core.core/map->SinkImpl")
-    (doseq [s (vals @executable-steps)]
-      (log/info "Initializing Step " (:name s))
-      (.init ^Step s))
+    (doseq [[name step] @executable-steps]
+      (log/info "Initializing Step " name)
+      (.run ^Runnable step))
     (while true
       (let [v (<!! main-channel)]
         (if (= :stop v)
