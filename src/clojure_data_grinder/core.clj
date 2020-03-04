@@ -167,6 +167,6 @@
                 (log/info "Stopping channel " name)
                 (close! c))
               (log/info "Stopping scheduled tasks")
-              (at/stop-and-reset-pool! core/schedule-pool :strategy :kill)
+              (core/reset-pool)
               (log/info "Shutting down...")
               (System/exit 0)))))))
