@@ -17,10 +17,11 @@ jobs: # basic units of work in a run
 
       - run: lein deps
 
-#      - run: git clone URL_TO_REPOSITORY
-#
-#      - run: cd dmp-service && lein deps && lein install
-    #todo - add machine user to github to be able to checkout the project
+      - run: git clone https://github.com/sn0wF1eld/clojure-data-grinder-core.git
+
+      - run: cd clojure-data-grinder-core && lein deps && lein install
+
+      - run: cd ~/clojure-data-grinder
 
       - save_cache: # generate and store cache in the .m2 directory using a key template
           paths:

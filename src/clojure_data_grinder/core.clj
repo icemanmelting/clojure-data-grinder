@@ -70,23 +70,26 @@
     (require (symbol (.getNamespace v-fn)))
     (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {})))))
 
-(defn- instantiate-new-step-thread [n impl name conf v-fn in-ch fn out-ch pf]
-  (let [^Step s (impl {:state (atom {:processed-batches 0
-                                     :successful-batches 0
-                                     :unsuccessful-batches 0})
-                       :name name
-                       :conf conf
-                       :v-fn v-fn
-                       :in in-ch
-                       :x-fn fn
-                       :out out-ch
-                       :poll-frequency-s pf})]
-    (if v-fn
-      (do (log/info "Validating Step " name)
-          (.validate s))
-      (log/info "Validation Function for Source " name "not present, skipping validation."))
-    (log/info "Adding source " name " to executable steps")
-    (swap! executable-steps assoc (str name "-" n) s)))
+(defn- instantiate-new-step-thread
+  ([impl name conf v-fn in-ch fn out-ch pf]
+   (instantiate-new-step-thread "" impl name conf v-fn in-ch fn out-ch pf))
+  ([n impl name conf v-fn in-ch fn out-ch pf]
+   (let [^Step s (impl {:state (atom {:processed-batches 0
+                                      :successful-batches 0
+                                      :unsuccessful-batches 0})
+                        :name name
+                        :conf conf
+                        :v-fn v-fn
+                        :in in-ch
+                        :x-fn fn
+                        :out out-ch
+                        :poll-frequency-s pf})]
+     (if v-fn
+       (do (log/info "Validating Step " name)
+           (.validate s))
+       (log/info "Validation Function for Step " name "not present, skipping validation."))
+     (log/info "Adding Step " name " to executable steps")
+     (swap! executable-steps assoc (str name "-" n) s))))
 
 (defn- bootstrap-step
   "Bootstraps a step. Validates and initializes it by resolving all functions or predefined types."
@@ -96,7 +99,7 @@
         out-ch (get @channels out)
         v-fn (resolve-validation-function v-fn)
         fn (when (not type) (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {}))))]
-    (doseq [a (range threads)]
+    (doseq [a (range (or threads 1))]
       (instantiate-new-step-thread a impl name conf v-fn in-ch fn out-ch pf))))
 
 (defn- resolve-type->bootstrap-step
@@ -154,7 +157,9 @@
     (resolve-type->bootstrap-step sinks "clojure-data-grinder-core.core/map->SinkImpl")
     (doseq [[name step] @executable-steps]
       (log/info "Initializing Step " name)
-      (.run ^Runnable step))
+      (if (instance? Runnable step)
+        (.run ^Runnable step)
+        (.init ^Step step)))
     (while true
       (let [v (<!! main-channel)]
         (if (= :stop v)
