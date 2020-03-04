@@ -15,13 +15,13 @@ jobs: # basic units of work in a run
       - restore_cache: # restores saved cache if checksum hasn't changed since the last run
           key: clojure-data-grinder-{{ checksum "project.clj" }}
 
-      - run: lein deps
-
       - run: git clone https://github.com/sn0wF1eld/clojure-data-grinder-core.git
 
       - run: cd clojure-data-grinder-core && lein deps && lein install
 
       - run: cd ~/clojure-data-grinder
+
+      - run: lein deps
 
       - save_cache: # generate and store cache in the .m2 directory using a key template
           paths:
