@@ -1,67 +1,61 @@
 {:api-server #profile {:default {:port 8080}
-                       :staging    {}
+                       :staging {}
                        :production {}}
- :steps      #profile {:default    {:sources   [{:name             "file-reader"
-                                                 :conf             {:watch-dir "/mnt/c/Users/iCeMan/Desktop/"}
-                                                 :v-fn             nil
-                                                 :out              "line-interpreter"
-                                                 :type             clojure-data-grinder-core.core/map->FileWatcherSource
-                                                 :poll-frequency-s 5
-                                                 :threads 1}]
-                                    :grinders  [{:name             "line-interpreter"
-                                                 :conf             {}
-                                                 :v-fn             nil
-                                                 :in               "line-interpreter"
-                                                 :out              "line-mult"
-                                                 :fn               cdg-test.core/process-file
-                                                 :poll-frequency-s 5
-                                                 :threads 2}
-                                                {:name             "line-grinder"
-                                                 :conf             {}
-                                                 :v-fn             nil
-                                                 :in               "line-grinder"
-                                                 :out              "line-sink"
-                                                 :fn                cdg-test.core/grinder-multiplier
-                                                 :poll-frequency-s 5
-                                                 :threads 2}
-                                                {:name             "line-grinder-2"
-                                                 :conf             {}
-                                                 :v-fn             nil
-                                                 :in               "line-grinder-2"
-                                                 :out              "line-sink"
-                                                 :fn                cdg-test.core/grinder-multiplier-2
-                                                 :poll-frequency-s 5
-                                                 :threads 2}]
-                                    :sinks     [{:name             "line-sink"
-                                                 :in               "line-sink"
-                                                 :conf             {}
-                                                 :v-fn             nil
-                                                 :fn               cdg-test.core/sink-value
-                                                 :poll-frequency-s 5
-                                                 :threads 2}]
-                                    :pipelines [{:from {:name        "file-reader"
-                                                        :buffer-size 10}
-                                                 :to   {:name        "line-interpreter"
-                                                        :buffer-size 10}}
-                                                {:from {:name        "line-interpreter"
-                                                        :buffer-size 10}
-                                                 :to   {:name        "line-mult"
-                                                        :buffer-size 10}}
-                                                {:from {:name        "line-mult"
-                                                        :buffer-size 10}
-                                                 :to   {:name        "line-grinder"
-                                                        :buffer-size 10}}
-                                                {:from {:name        "line-mult"
-                                                        :buffer-size 10}
-                                                 :to   {:name        "line-grinder-2"
-                                                        :buffer-size 10}}
-                                                {:from {:name        "line-grinder"
-                                                        :buffer-size 10}
-                                                 :to   {:name        "line-sink"
-                                                        :buffer-size 10}}
-                                                {:from {:name        "line-grinder-2"
-                                                        :buffer-size 10}
-                                                 :to   {:name        "line-sink"
-                                                        :buffer-size 10}}]}
-                       :staging    {}
-                       :production {}}}
+ :steps #profile {:default {:channels [{:name "line-interpreter"
+                                        :buffer-size 10}
+                                       {:name "line-grinder"
+                                        :buffer-size 10}
+                                       {:name "line-grinder-2"
+                                        :buffer-size 10}
+                                       {:name "line-sink"
+                                        :buffer-size 10}]
+                            :sources [{:name "file-reader"
+                                       :conf {:watch-dir "/mnt/c/Users/iCeMan/Desktop/"}
+                                       :v-fn nil
+                                       :out ["line-interpreter"]
+                                       :type clojure-data-grinder-core.core/map->FileWatcherSource
+                                       :poll-frequency-s 5
+                                       :threads 1}]
+                            ;:enrichers [{:name "file-cacher"
+                            ;             :conf {}
+                            ;             :v-fn nil
+                            ;             :in "line-interpreter"
+                            ;             :x-fn cdg-test.core/cache-file
+                            ;             :out []
+                            ;             :cache-fn cdg-test.core/cache-read
+                            ;             :poll-frequency-s 5
+                            ;             :cache-poll-frequency-s 5}]
+                            :grinders [{:name "line-interpreter"
+                                        :conf {}
+                                        :v-fn nil
+                                        :in "line-interpreter"
+                                        :out ["line-grinder"
+                                              "line-grinder-2"]
+                                        :fn cdg-test.core/process-file
+                                        :poll-frequency-s 5
+                                        :threads 2}
+                                       {:name "line-grinder"
+                                        :conf {}
+                                        :v-fn nil
+                                        :in "line-grinder"
+                                        :out ["line-sink"]
+                                        :fn cdg-test.core/grinder-multiplier
+                                        :poll-frequency-s 5
+                                        :threads 2}
+                                       {:name "line-grinder-2"
+                                        :conf {}
+                                        :v-fn nil
+                                        :in "line-grinder-2"
+                                        :out ["line-sink"]
+                                        :fn cdg-test.core/grinder-multiplier-2
+                                        :poll-frequency-s 5
+                                        :threads 2}]
+                            :sinks [{:name "line-sink"
+                                     :in "line-sink"
+                                     :conf {}
+                                     :v-fn nil
+                                     :fn cdg-test.core/sink-value
+                                     :poll-frequency-s 5
+                                     :threads 2}]}
+                  :staging {}
+                  :production {}}}

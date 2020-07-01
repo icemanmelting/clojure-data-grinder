@@ -18,52 +18,53 @@
 (def channels (atom {}))
 (def ^:private main-channel (chan 1))
 
-(defn- pipelines->grouped-by-name
-  "Groups pipelines by name"
-  [pipelines]
-  (group-by #(get-in % [:from :name]) pipelines))
+;(defn- pipelines->grouped-by-name
+;  "Groups pipelines by name"
+;  [pipelines]
+;  (group-by #(get-in % [:from :name]) pipelines))
+;
+;(defn- ->pipeline-higher-buffer-size
+;  "Returns the pipelines with the higher buffer size.
+;  Used when there's a branching in the data pipeline,
+;  and a decision needs to be made to which one should be selected."
+;  [pipelines]
+;  (apply max-key
+;         #(get-in % [:from :buffer-size])
+;         pipelines))
 
-(defn- ->pipeline-higher-buffer-size
-  "Returns the pipelines with the higher buffer size.
-  Used when there's a branching in the data pipeline,
-  and a decision needs to be made to which one should be selected."
-  [pipelines]
-  (apply max-key
-         #(get-in % [:from :buffer-size])
-         pipelines))
+(defn- create-channels
+  "Creates channels with ch-name as name of the channel, if it wasn't found in the channels atomic reference"
+  [chs]
+  (doseq [{name :name buffer-size :buffer-size} chs]
+    (if-let [ch (get @channels name)]
+      ch
+      (do
+        (log/debug "Starting channel " name)
+        (swap! channels assoc name (chan buffer-size))))))
 
-(defn- create-channel
-  "Creates a channel with ch-name as name of the channel, if it wasn't found in the channels atomic reference"
-  [ch-name buffer-size]
-  (if-let [ch (get @channels ch-name)]
-    ch
-    (do
-      (log/debug "Starting channel " ch-name)
-      (swap! channels assoc ch-name (chan buffer-size)))))
-
-(defmulti bootstrap-pipeline
-  "Multi method used to bootstrap a pipeline.
-  The version of the method will depend on the amount of pipelines with the same name when grouped."
-  (fn [entry]
-    (log/info "Bootstraping pipeline!")
-    (> (-> entry val count) 1)))
-
-(defmethod bootstrap-pipeline false [entry]
-  (log/debug "Bootstrapping pipeline" (key entry))
-  (let [[{{f-name :name bs-from :buffer-size} :from {t-name :name bs-to :buffer-size} :to}] (val entry)]
-    (create-channel f-name bs-from)
-    (create-channel t-name bs-to)))
-
-(defmethod bootstrap-pipeline true [entry]
-  (log/info "Multiple output pipeline detected!")
-  (let [{{f-name :name bs-from :buffer-size} :from} (->pipeline-higher-buffer-size (val entry))
-        from-channel (create-channel f-name bs-from)
-        mult-c (mult from-channel)]
-    (doseq [c (val entry)]
-      (let [{{t-name :name bs-to :buffer-size} :to} c]
-        (create-channel t-name bs-to)
-        (log/debug "Adding channel " t-name " to mult")
-        (tap mult-c (get @channels t-name))))))
+;(defmulti bootstrap-pipeline
+;  "Multi method used to bootstrap a pipeline.
+;  The version of the method will depend on the amount of pipelines with the same name when grouped."
+;  (fn [entry]
+;    (log/info "Bootstraping pipeline!")
+;    (> (-> entry val count) 1)))
+;
+;(defmethod bootstrap-pipeline false [entry]
+;  (log/debug "Bootstrapping pipeline" (key entry))
+;  (let [[{{f-name :name bs-from :buffer-size} :from {t-name :name bs-to :buffer-size} :to}] (val entry)]
+;    (create-channel f-name bs-from)
+;    (create-channel t-name bs-to)))
+;
+;(defmethod bootstrap-pipeline true [entry]
+;  (log/info "Multiple output pipeline detected!")
+;  (let [{{f-name :name bs-from :buffer-size} :from} (->pipeline-higher-buffer-size (val entry))
+;        from-channel (create-channel f-name bs-from)
+;        mult-c (mult from-channel)]
+;    (doseq [c (val entry)]
+;      (let [{{t-name :name bs-to :buffer-size} :to} c]
+;        (create-channel t-name bs-to)
+;        (log/debug "Adding channel " t-name " to mult")
+;        (tap mult-c (get @channels t-name))))))
 
 (defn- resolve-validation-function [v-fn]
   (when v-fn
@@ -71,9 +72,9 @@
     (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {})))))
 
 (defn- instantiate-new-step-thread
-  ([impl name conf v-fn in-ch fn out-ch pf]
-   (instantiate-new-step-thread "" impl name conf v-fn in-ch fn out-ch pf))
-  ([n impl name conf v-fn in-ch fn out-ch pf]
+  ([impl name conf v-fn in-ch fn out-chs pf]
+   (instantiate-new-step-thread "" impl name conf v-fn in-ch fn out-chs pf))
+  ([n impl name conf v-fn in-ch fn out-chs pf]
    (let [^Step s (impl {:state (atom {:processed-batches 0
                                       :successful-batches 0
                                       :unsuccessful-batches 0})
@@ -82,7 +83,7 @@
                         :v-fn v-fn
                         :in in-ch
                         :x-fn fn
-                        :out out-ch
+                        :out out-chs
                         :poll-frequency-s pf})]
      (if v-fn
        (do (log/info "Validating Step " name)
@@ -96,11 +97,11 @@
   [impl {name :name conf :conf ^Symbol v-fn :v-fn out :out in :in ^Symbol fn :fn type :type pf :poll-frequency-s threads :threads}]
   (require (symbol (.getNamespace (or fn type))))
   (let [in-ch (get @channels in)
-        out-ch (get @channels out)
+        out-chs (-> (select-keys @channels out) vals vector flatten)
         v-fn (resolve-validation-function v-fn)
         fn (when (not type) (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {}))))]
     (doseq [a (range (or threads 1))]
-      (instantiate-new-step-thread a impl name conf v-fn in-ch fn out-ch pf))))
+      (instantiate-new-step-thread a impl name conf v-fn in-ch fn out-chs pf))))
 
 (defn- resolve-type->bootstrap-step
   "Resolves the type to instantiate and bootstraps the step."
@@ -135,6 +136,7 @@
 (defroutes app (-> main-routes wrap-json-body wrap-json-response wrap-cors))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Kill Signal Handling;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defrecord KillSignalHandler []
   SignalHandler
   (^void handle [_ ^Signal _]
@@ -142,16 +144,15 @@
 
 (defn- handle-int-signal []
   (Signal/handle (Signal. "INT") (->KillSignalHandler)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn -main []
   (let [port (-> c/conf :api-server :port)]
     (run-server app {:port port})
     (log/info "Server started on port" port))
   (handle-int-signal)
-  (let [{{sources :sources grinders :grinders sinks :sinks pipelines :pipelines} :steps} c/conf
-        grouped-pipelines (pipelines->grouped-by-name pipelines)]
-    (doseq [p grouped-pipelines]
-      (bootstrap-pipeline p))
+  (let [{{chs :channels sources :sources grinders :grinders sinks :sinks} :steps} c/conf]
+    (create-channels chs)
     (resolve-type->bootstrap-step sources "clojure-data-grinder-core.core/map->SourceImpl")
     (resolve-type->bootstrap-step grinders "clojure-data-grinder-core.core/map->GrinderImpl")
     (resolve-type->bootstrap-step sinks "clojure-data-grinder-core.core/map->SinkImpl")
