@@ -10,7 +10,7 @@
                                        {:name "line-sink"
                                         :buffer-size 10}]
                             :sources [{:name "file-reader"
-                                       :conf {:watch-dir "/mnt/c/Users/iCeMan/Desktop/"}
+                                       :conf {:watch-dir "C:\\Users\\iCeMan\\Desktop\\"}
                                        :v-fn nil
                                        :out ["line-interpreter"]
                                        :type clojure-data-grinder-core.core/map->FileWatcherSource

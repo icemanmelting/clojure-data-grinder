@@ -15,22 +15,8 @@
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
-(def channels (atom {}))
+(def ^:private channels (atom {}))
 (def ^:private main-channel (chan 1))
-
-;(defn- pipelines->grouped-by-name
-;  "Groups pipelines by name"
-;  [pipelines]
-;  (group-by #(get-in % [:from :name]) pipelines))
-;
-;(defn- ->pipeline-higher-buffer-size
-;  "Returns the pipelines with the higher buffer size.
-;  Used when there's a branching in the data pipeline,
-;  and a decision needs to be made to which one should be selected."
-;  [pipelines]
-;  (apply max-key
-;         #(get-in % [:from :buffer-size])
-;         pipelines))
 
 (defn- create-channels
   "Creates channels with ch-name as name of the channel, if it wasn't found in the channels atomic reference"
@@ -41,30 +27,6 @@
       (do
         (log/debug "Starting channel " name)
         (swap! channels assoc name (chan buffer-size))))))
-
-;(defmulti bootstrap-pipeline
-;  "Multi method used to bootstrap a pipeline.
-;  The version of the method will depend on the amount of pipelines with the same name when grouped."
-;  (fn [entry]
-;    (log/info "Bootstraping pipeline!")
-;    (> (-> entry val count) 1)))
-;
-;(defmethod bootstrap-pipeline false [entry]
-;  (log/debug "Bootstrapping pipeline" (key entry))
-;  (let [[{{f-name :name bs-from :buffer-size} :from {t-name :name bs-to :buffer-size} :to}] (val entry)]
-;    (create-channel f-name bs-from)
-;    (create-channel t-name bs-to)))
-;
-;(defmethod bootstrap-pipeline true [entry]
-;  (log/info "Multiple output pipeline detected!")
-;  (let [{{f-name :name bs-from :buffer-size} :from} (->pipeline-higher-buffer-size (val entry))
-;        from-channel (create-channel f-name bs-from)
-;        mult-c (mult from-channel)]
-;    (doseq [c (val entry)]
-;      (let [{{t-name :name bs-to :buffer-size} :to} c]
-;        (create-channel t-name bs-to)
-;        (log/debug "Adding channel " t-name " to mult")
-;        (tap mult-c (get @channels t-name))))))
 
 (defn- resolve-validation-function [v-fn]
   (when v-fn
