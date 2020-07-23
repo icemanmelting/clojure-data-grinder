@@ -15,7 +15,7 @@
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
-(def ^:private channels (atom {}))
+(def  channels (atom {}))
 (def ^:private main-channel (chan 1))
 
 (defn- create-channels
@@ -33,10 +33,10 @@
     (require (symbol (.getNamespace v-fn)))
     (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {})))))
 
-(defn- instantiate-new-step-thread
-  ([impl name conf v-fn in-ch fn out-chs pf]
-   (instantiate-new-step-thread "" impl name conf v-fn in-ch fn out-chs pf))
-  ([n impl name conf v-fn in-ch fn out-chs pf]
+(defn- instantiate-new-step-thread;;todo - improve initialization, a map can be passed instead of multiple args in this case
+  ([impl name conf v-fn in-ch x-fn out-chs pf]
+   (instantiate-new-step-thread "" impl name conf v-fn in-ch x-fn out-chs pf))
+  ([n impl name conf v-fn in-ch x-fn out-chs pf]
    (let [^Step s (impl {:state (atom {:processed-batches 0
                                       :successful-batches 0
                                       :unsuccessful-batches 0})
@@ -44,7 +44,7 @@
                         :conf conf
                         :v-fn v-fn
                         :in in-ch
-                        :x-fn fn
+                        :x-fn x-fn
                         :out out-chs
                         :poll-frequency-s pf})]
      (if v-fn
