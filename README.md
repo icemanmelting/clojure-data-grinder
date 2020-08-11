@@ -77,22 +77,39 @@ The current version of the Grinder, contains 2 main configuration points:
 - API Server;
 - Steps;
 
+##API Server
+
 The api server contains all the information for the API part of the grinder. 
 This provides the user about how many errors have occurred on specific steps, 
 or a general view of the entire pipeline.
 
-The steps, are further subdivided into 4 categories:
+Its configuration for the moment, is composed only of the port where the server is going to be running.
 
-- Channels;
-- Sources;
-- Grinders;
-- Enhancers;
-- Sinks.
+##Steps
 
-The channels contain all the configurations for the channels to be used in the communication between all steps.
-The sources contain all the configurations for all the sources present in the pipeline.
-The Grinders contain all the configurations for all the grinders present in the pipeline.
-The Enhancers contain all the configurations for all the enahancers present in the pipeline.
-The Sinks contain all the configurations for all the enahancers present in the pipeline.
+The steps contain everything related to the pipeline, i.e. everything from the pipes (channels) to the steps themselves.
+As mentioned above, there are multiple types of steps that can be used in the configuration. These need to be added to 
+the respective vector inside the configuration. Therefore we will end up with:
 
- 
+`:sources []` - for all the sources used in the pipeline;
+`:grinders []` - for all the grinders used in the pipeline;
+`:sinks []` - for all the sinks used in the pipeline;
+
+each type has common arguments with all other steps, as well as custom ones, that are only used in that specific step.
+
+###Sources Configuration
+
+Each source has the following arguments:
+
+- `:name` - the name of the step; 
+- `:conf` - a common map that contains the configuration needed for this specific source;
+- `:v-fn` - validation function, the function to be used to validate the configuration provided above;
+- `:out` - the vector that contains the names of the channels used as the output of this source;
+- `:type` - this is used in case we have a predefined source type (an external library for isntance) that was previously
+implemented. If this is not present, then it will try to check if a custom function is present to use as a source.
+- `:poll-frequency-s` - the poll frequency for the source in seconds. How long should it wait to run the source function again.
+- `:threads` - the number of threads used to run this source (default is 1).
+- `:fn` - in case type is not present, this will contain the function used as the source. This will only be used if `:type`
+IS NOT PRESENT!
+
+
