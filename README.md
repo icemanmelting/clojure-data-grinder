@@ -112,4 +112,16 @@ implemented. If this is not present, then it will try to check if a custom funct
 - `:fn` - in case type is not present, this will contain the function used as the source. This will only be used if `:type`
 IS NOT PRESENT!
 
+###Grinders Configuration
+
+Each Grinder has the following arguments
+
+- `:name` - the name of the step;
+- `:conf` - a common map that contains the configuration needed for this specific grinder;
+- `:v-fn` - validation function, the function to be used to validate the configuration provided above; 
+- `:in` - the name of the channel that provides the data to be grinded;
+- `:x-fn` - the transformation function responsible for grinding the data input;
+- `:out` - the vector that contains the names of the channels used as the output of this grinder;
+- `:poll-frequency-s` - the poll frequency for the grinder in seconds. How long should it wait to read from the input channel again.
+
 
