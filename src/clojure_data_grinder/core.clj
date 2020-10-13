@@ -33,7 +33,7 @@
     (require (symbol (.getNamespace v-fn)))
     (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {})))))
 
-(defn- instantiate-new-step-thread;;todo - improve initialization, a map can be passed instead of multiple args in this case
+(defn- instantiate-new-step-thread
   ([impl name conf v-fn in-ch x-fn out-chs pf]
    (instantiate-new-step-thread "" impl name conf v-fn in-ch x-fn out-chs pf))
   ([n impl name conf v-fn in-ch x-fn out-chs pf]
@@ -41,7 +41,7 @@
                                       :successful-batches 0
                                       :unsuccessful-batches 0})
                         :name name
-                        :conf conf
+                        :conf (atom conf)
                         :v-fn v-fn
                         :in in-ch
                         :x-fn x-fn
