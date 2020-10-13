@@ -17,7 +17,7 @@ jobs: # basic units of work in a run
 
       - run: git clone https://github.com/sn0wF1eld/clojure-data-grinder-core.git
 
-      - run: cd clojure-data-grinder-core && lein deps && lein install
+      - run: cd clojure-data-grinder-core && lein deps && lein clean && lein install
 
       - run: cd ~/clojure-data-grinder
 
