@@ -1,6 +1,5 @@
 (ns clojure-data-grinder.core
-  (:require [overtone.at-at :as at]
-            [compojure.core :refer :all]
+  (:require [compojure.core :refer :all]
             [clojure-data-grinder-core.core :refer :all]
             [clojure-data-grinder.config :as c]
             [clojure-data-grinder.response :refer :all]
@@ -86,8 +85,8 @@
                              (many :ok (for [s @executable-steps]
                                          {(key s) (.getState ^Step (val s))})))))
   (GET "/state/:name" [] (render (fn [{{:keys [name]} :params}]
-                                   (if-let [^Step s (get @executable-steps name)]
-                                     (one :ok (.getState s))
+                                   (if-let [s (get @executable-steps name)]
+                                     (one :ok (.getState ^Step s))
                                      (error :not-found "Please refer to an existing step")))))
   (PUT "/execution/stop" [] (fn [_]
                               (log/info "Stopping channels")
@@ -129,6 +128,6 @@
                 (log/info "Stopping channel " name)
                 (close! c))
               (log/info "Stopping scheduled tasks")
-              (core/reset-pool)
+              (reset-pool)
               (log/info "Shutting down...")
               (System/exit 0)))))))
