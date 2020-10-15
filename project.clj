@@ -9,8 +9,7 @@
                  [org.clojure/tools.logging "0.6.0"]
                  [clojure-data-grinder-core "0.1.0-SNAPSHOT"]
                  [aero "1.1.4"]
-                 [clojure-data-grinder-core "0.1.0-SNAPSHOT"
-                  :exclusions [core.async tools.logging at-at dirwatch log4j]]
+                 [clojure-data-grinder-core "0.1.0-SNAPSHOT" :exclusions [core.async tools.logging at-at dirwatch log4j]]
                  [overtone/at-at "1.2.0"]
                  [juxt/dirwatch "0.2.5"]
                  [log4j/log4j "1.2.17"]
