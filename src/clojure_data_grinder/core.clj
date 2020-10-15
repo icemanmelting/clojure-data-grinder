@@ -1,7 +1,7 @@
 (ns clojure-data-grinder.core
   (:require [overtone.at-at :as at]
             [compojure.core :refer :all]
-            [clojure-data-grinder-core.core :as core]
+            [clojure-data-grinder-core.core :refer :all]
             [clojure-data-grinder.config :as c]
             [clojure-data-grinder.response :refer :all]
             [clojure.tools.logging :as log]
@@ -10,8 +10,7 @@
             [ring.middleware.json :as json :refer [wrap-json-response]]
             [ring.middleware.cors :as cors])
   (:import (sun.misc SignalHandler Signal)
-           (clojure.lang Symbol)
-           (clojure_data_grinder_core.core Step))
+           (clojure.lang Symbol))
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
