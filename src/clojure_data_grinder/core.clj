@@ -37,7 +37,8 @@
   ([n impl name conf v-fn in-ch x-fn out-chs pf]
    (let [^Step s (impl {:state (atom {:processed-batches 0
                                       :successful-batches 0
-                                      :unsuccessful-batches 0})
+                                      :unsuccessful-batches 0
+                                      :stopped false})
                         :name name
                         :conf (atom conf)
                         :v-fn v-fn

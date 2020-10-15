@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 BASEDIR=$(dirname "$0")
 
 cp "/mnt/c/Users/iCeMan/IdeaProjects/cdg-test/target/cdg-test-0.1.0-SNAPSHOT-standalone.jar" $BASEDIR
