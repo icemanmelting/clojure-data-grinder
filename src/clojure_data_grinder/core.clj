@@ -3,6 +3,7 @@
             [compojure.core :refer :all]
             [clojure-data-grinder.config :as c]
             [clojure-data-grinder.response :refer :all]
+            [clojure-data-grinder-core.core :refer :all]
             [clojure.tools.logging :as log]
             [clojure.core.async :as a :refer [chan go go-loop <!! put! mult tap close!]]
             [org.httpkit.server :refer [run-server]]
@@ -16,82 +17,6 @@
 (def ^:private channels (atom {}))
 (def ^:private main-channel (chan 1))
 (def ^:private schedule-pool (at/mk-pool))
-
-(defprotocol Step
-  (init [this] "initialize the current step")
-  (validate [this conf])
-  (getState [this]))
-
-(defprotocol Source
-  (output [this value] "method to output the sourced data"))
-
-(defrecord SourceImpl [state name conf v-fn x-fn out poll-frequency-s]
-  Source
-  (output [this value]
-    (log/debug "Adding value " value " to source channel " name)
-    (put! out value))                                       ;;need to create logic for batch output, maybe method next batch???
-  Step
-  (init [this]
-    (log/debug "Initialized Source " name)
-    (at/every poll-frequency-s #(let [{sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-                                  (try (output this (x-fn))
-                                       (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-                                       (catch Exception e
-                                         (log/error e)
-                                         (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
-  (validate [this conf]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Source conf!" result))
-      (log/debug "Source " name " validated")))
-  (getState [this] @state))
-
-(defprotocol Grinder
-  (grind [this v]))
-
-(defrecord GrinderImpl [state name conf v-fn in x-fn out poll-frequency-s]
-  Grinder
-  (grind [this v]
-    (log/debug "Grinding value " v " on Grinder " name)
-    (put! out (x-fn v)))
-  Step
-  (init [this]
-    (at/every poll-frequency-s #(let [v (<!! in)
-                                      {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-                                  (try (grind this v)
-                                       (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-                                       (catch Exception e
-                                         (log/error e)
-                                         (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))
-                                  ) schedule-pool))
-  (validate [this conf]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Grinder conf!" result))
-      (log/debug "Grinder " name " validated")))
-  (getState [this] @state))
-
-(defprotocol Sink
-  (sink [this v] "method to sink data"))
-
-(defrecord SinkImpl [state name conf v-fn x-fn in poll-frequency-s]
-  Sink
-  (sink [this v]
-    (log/debug "Sinking value " v " to " name)
-    (x-fn v))
-  Step
-  (validate [this conf]
-    (if-let [result (v-fn conf)]
-      (throw (ex-info "Problem validating Sink conf!" result))
-      (log/debug "Sink " name " validated")))
-  (init [this]
-    (at/every poll-frequency-s #(let [v (<!! in)
-                                      {sb :successful-batches ub :unsuccessful-batches pb :processed-batches} @state]
-                                  (try
-                                    (sink this v)
-                                    (swap! state merge {:processed-batches (inc pb) :successful-batches (inc sb)})
-                                    (catch Exception e
-                                      (log/error e)
-                                      (swap! state merge {:processed-batches (inc pb) :unsuccessful-batches (inc ub)})))) schedule-pool))
-  (getState [this] @state))
 
 (defn- pipelines->grouped-by-name [pipelines]
   (group-by #(get-in % [:from :name]) pipelines))
@@ -143,25 +68,26 @@
                (require (symbol (.getNamespace v-fn)))
                (or (resolve v-fn) (throw (ex-info (str "Function " v-fn " cannot be resolved.") {}))))
         fn (or (resolve fn) (throw (ex-info (str "Function " fn " cannot be resolved.") {})))
-        s (impl {:state            (atom {:processed-batches    0
-                                          :successful-batches   0
-                                          :unsuccessful-batches 0})
-                 :name             name
-                 :conf             conf
-                 :v-fn             v-fn
-                 :in               in-ch
-                 :x-fn             fn
-                 :out              out-ch
-                 :poll-frequency-s pf})]
+        ^Step s (impl {:state (atom {:processed-batches 0
+                                     :successful-batches 0
+                                     :unsuccessful-batches 0
+                                     :stopped false})
+                       :name name
+                       :conf conf
+                       :v-fn v-fn
+                       :in in-ch
+                       :x-fn fn
+                       :out out-ch
+                       :poll-frequency-s pf})]
     (if v-fn
       (do (log/info "Validating Step " ~name)
-          (validate s conf))
+          (validate s))
       (log/info "Validation Function for Source " name "not present, skipping validation."))
     (log/info "Adding source " name " to executable steps")
     (swap! executable-steps assoc name s)))
 
 (defn- wrap-json-body [h]
-  (json/wrap-json-body h {:keywords?          true
+  (json/wrap-json-body h {:keywords? true
                           :malformed-response (response (error :unprocessable-entity "Wrong JSON format"))}))
 
 (defn- wrap-cors [h]
@@ -170,17 +96,17 @@
                   :access-control-allow-methods [:get :put :post :delete :options]))
 
 (defroutes main-routes
-           (GET "/state" [] (render (fn [_]
-                                      (many :ok (for [s @executable-steps]
-                                                  {(key s) (getState (val s))})))))
-           (GET "/state/:name" [] (render (fn [{{:keys [name]} :params}]
-                                            (if-let [s (get @executable-steps name)]
-                                              (one :ok (getState s))
-                                              (error :not-found "Please refer to an existing step")))))
-           (PUT "/execution/stop" [] (fn [_]
-                                       (log/info "Stopping channels")
-                                       (put! main-channel :stop)
-                                       (one :ok {}))))
+  (GET "/state" [] (render (fn [_]
+                             (many :ok (for [s @executable-steps]
+                                         {(key s) (getState (val s))})))))
+  (GET "/state/:name" [] (render (fn [{{:keys [name]} :params}]
+                                   (if-let [s (get @executable-steps name)]
+                                     (one :ok (getState s))
+                                     (error :not-found "Please refer to an existing step")))))
+  (PUT "/execution/stop" [] (fn [_]
+                              (log/info "Stopping channels")
+                              (put! main-channel :stop)
+                              (one :ok {}))))
 
 (defroutes app (-> main-routes wrap-json-body wrap-json-response wrap-cors))
 

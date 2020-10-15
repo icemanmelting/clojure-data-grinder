@@ -7,6 +7,7 @@
                  [org.clojure/core.async "0.7.559"]
                  [org.clojure/data.json "0.2.7"]
                  [org.clojure/tools.logging "0.6.0"]
+                 [clojure-data-grinder-core "0.1.0-SNAPSHOT"]
                  [aero "1.1.4"]
                  [overtone/at-at "1.2.0"]
                  [log4j/log4j "1.2.17"]
