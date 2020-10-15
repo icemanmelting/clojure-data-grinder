@@ -14,7 +14,7 @@
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
-(def ^:private channels (atom {}))
+(def channels (atom {}))
 (def ^:private main-channel (chan 1))
 (def ^:private schedule-pool (at/mk-pool))
 
@@ -109,6 +109,7 @@
                               (one :ok {}))))
 
 (defroutes app (-> main-routes wrap-json-body wrap-json-response wrap-cors))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defrecord KillSignalHandler []
   SignalHandler
