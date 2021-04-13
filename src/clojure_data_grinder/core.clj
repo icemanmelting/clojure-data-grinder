@@ -13,7 +13,7 @@
   (:gen-class))
 
 (def ^:private executable-steps (atom {}))
-(def  channels (atom {}))
+(def ^:private channels (atom {}))
 (def ^:private main-channel (chan 1))
 
 (defn- create-channels
