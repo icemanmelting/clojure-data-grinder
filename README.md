@@ -77,7 +77,7 @@ The current version of the Grinder, contains 2 main configuration points:
 - API Server;
 - Steps;
 
-##API Server
+## API Server
 
 The api server contains all the information for the API part of the grinder. 
 This provides the user about how many errors have occurred on specific steps, 
@@ -85,7 +85,7 @@ or a general view of the entire pipeline.
 
 Its configuration for the moment, is composed only of the port where the server is going to be running.
 
-##Steps
+## Steps
 
 The steps contain everything related to the pipeline, i.e. everything from the pipes (channels) to the steps themselves.
 As mentioned above, there are multiple types of steps that can be used in the configuration. These need to be added to 
@@ -97,7 +97,7 @@ the respective vector inside the configuration. Therefore we will end up with:
 
 each type has common arguments with all other steps, as well as custom ones, that are only used in that specific step.
 
-###Sources Configuration
+### Sources Configuration
 
 Each source has the following arguments:
 
@@ -112,7 +112,7 @@ implemented. If this is not present, then it will try to check if a custom funct
 - `:fn` - in case type is not present, this will contain the function used as the source. This will only be used if `:type`
 IS NOT PRESENT!
 
-###Grinders Configuration
+### Grinders Configuration
 
 Each Grinder has the following arguments
 
